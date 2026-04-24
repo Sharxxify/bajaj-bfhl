@@ -2,197 +2,157 @@ function processData(data) {
     const invalid_entries = [];
     const duplicate_edges = [];
     const valid_edges = [];
-    
     const seen_edges = new Set();
     const duplicate_added = new Set();
-    
-    // a) Validation & b) Duplicate Detection
+
     if (!Array.isArray(data)) {
         return { error: "data must be an array" };
     }
-    
+
+    // Step 1: Validate & detect duplicates
     for (let item of data) {
         if (typeof item !== 'string') {
-            invalid_entries.push(item);
+            invalid_entries.push(String(item));
             continue;
         }
-        item = item.trim();
-        if (!/^[A-Z]->[A-Z]$/.test(item)) {
-            invalid_entries.push(item);
+        const trimmed = item.trim();
+        if (!/^[A-Z]->[A-Z]$/.test(trimmed)) {
+            invalid_entries.push(trimmed || item);
             continue;
         }
-        const u = item[0];
-        const v = item[3];
+        const u = trimmed[0], v = trimmed[3];
         if (u === v) {
-            invalid_entries.push(item);
+            invalid_entries.push(trimmed);
             continue;
         }
-        
-        if (seen_edges.has(item)) {
-            if (!duplicate_added.has(item)) {
-                duplicate_edges.push(item);
-                duplicate_added.add(item);
+        if (seen_edges.has(trimmed)) {
+            if (!duplicate_added.has(trimmed)) {
+                duplicate_edges.push(trimmed);
+                duplicate_added.add(trimmed);
             }
         } else {
-            seen_edges.add(item);
-            valid_edges.push(item);
+            seen_edges.add(trimmed);
+            valid_edges.push(trimmed);
         }
     }
-    
-    // c) Tree Construction
+
+    // Step 2: Build adjacency list (diamond rule: first parent wins)
     const adj = {};
-    const parent = {};
+    const parentMap = {};
     const nodes = new Set();
-    
+
     for (let edge of valid_edges) {
-        const u = edge[0];
-        const v = edge[3];
+        const u = edge[0], v = edge[3];
         nodes.add(u);
         nodes.add(v);
-        
-        // Diamond rule: first parent wins
-        if (parent[v]) {
-            continue; 
-        }
-        parent[v] = u;
+        if (parentMap[v] !== undefined) continue; // diamond: skip later parents
+        parentMap[v] = u;
         if (!adj[u]) adj[u] = [];
         adj[u].push(v);
     }
-    
+
+    // Step 3: Find roots (nodes with no parent)
     const roots = [];
-    for (let node of nodes) {
-        if (!parent[node]) {
-            roots.push(node);
-        }
+    for (let node of [...nodes].sort()) {
+        if (parentMap[node] === undefined) roots.push(node);
     }
-    
-    // Find unvisited components to handle pure cycles
-    const visited_from_roots = new Set();
-    const q = [...roots];
-    while (q.length > 0) {
-        const curr = q.shift();
-        visited_from_roots.add(curr);
-        if (adj[curr]) {
-            for (let child of adj[curr]) {
-                q.push(child);
-            }
-        }
+
+    // Step 4: Find pure-cycle groups (nodes unreachable from any root)
+    const visitedFromRoots = new Set();
+    const bfsQ = [...roots];
+    while (bfsQ.length > 0) {
+        const curr = bfsQ.shift();
+        if (visitedFromRoots.has(curr)) continue;
+        visitedFromRoots.add(curr);
+        if (adj[curr]) for (let child of adj[curr]) bfsQ.push(child);
     }
-    
-    const unvisited = Array.from(nodes).filter(n => !visited_from_roots.has(n));
-    const unvisited_set = new Set(unvisited);
-    
-    while (unvisited_set.size > 0) {
-        const start = unvisited_set.values().next().value;
-        let curr = start;
-        const path_set = new Set();
-        while (!path_set.has(curr) && unvisited_set.has(curr)) {
-            path_set.add(curr);
-            curr = parent[curr];
+
+    const unvisited = new Set([...nodes].filter(n => !visitedFromRoots.has(n)));
+
+    while (unvisited.size > 0) {
+        // Find the connected component and pick lex-smallest as root
+        const start = [...unvisited].sort()[0];
+        const component = new Set();
+        const compQ = [start];
+        while (compQ.length > 0) {
+            const node = compQ.shift();
+            if (component.has(node)) continue;
+            component.add(node);
+            unvisited.delete(node);
+            if (adj[node]) for (let c of adj[node]) if (!component.has(c)) compQ.push(c);
+            if (parentMap[node] !== undefined && !component.has(parentMap[node]))
+                compQ.push(parentMap[node]);
         }
-        
-        // Find lexicographically smallest node in the cycle
-        let cycle_min = curr;
-        let temp = parent[curr];
-        while (temp !== curr) {
-            if (temp < cycle_min) cycle_min = temp;
-            temp = parent[temp];
-        }
-        
-        roots.push(cycle_min);
-        
-        // Mark the entire connected component as visited
-        const comp_q = [start];
-        const comp_visited = new Set([start]);
-        while (comp_q.length > 0) {
-            const node = comp_q.shift();
-            unvisited_set.delete(node);
-            
-            if (adj[node]) {
-                for (let child of adj[node]) {
-                    if (!comp_visited.has(child) && unvisited_set.has(child)) {
-                        comp_visited.add(child);
-                        comp_q.push(child);
-                    }
-                }
-            }
-            if (parent[node]) {
-                const p = parent[node];
-                if (!comp_visited.has(p) && unvisited_set.has(p)) {
-                    comp_visited.add(p);
-                    comp_q.push(p);
-                }
-            }
-        }
+        roots.push([...component].sort()[0]);
     }
-    
-    // d) & e) Cycle Detection & Depth Calculation
+
+    // Step 5: DFS per root — detect cycles, build tree, compute depth
+    const hierarchies = [];
     let total_trees = 0;
     let total_cycles = 0;
     let max_depth = 0;
     let largest_tree_root = null;
-    
-    const parsed_trees = [];
-    
+
+    // Sort roots so processing order is deterministic
+    roots.sort();
+
     for (let root of roots) {
         const visited = new Set();
-        const recursion_stack = new Set();
-        let has_cycle = false;
-        
+        const recStack = new Set();
+        let cycleFound = false; // ✅ fresh per root
+
         function dfs(node) {
             visited.add(node);
-            recursion_stack.add(node);
-            
-            let max_child_depth = 0;
-            let tree_obj = {};
-            
+            recStack.add(node);
+            let maxChildDepth = 0;
+            const treeObj = {};
+
             if (adj[node]) {
                 for (let child of adj[node]) {
-                    if (!visited.has(child)) {
-                        const { depth: c_depth, tree: c_tree, cycle } = dfs(child);
-                        if (cycle) has_cycle = true;
-                        max_child_depth = Math.max(max_child_depth, c_depth);
-                        tree_obj[child] = c_tree;
-                    } else if (recursion_stack.has(child)) {
-                        has_cycle = true;
+                    if (recStack.has(child)) {
+                        cycleFound = true; // back-edge = cycle
+                    } else if (!visited.has(child)) {
+                        const { depth: cd, tree: ct } = dfs(child);
+                        maxChildDepth = Math.max(maxChildDepth, cd);
+                        treeObj[child] = ct;
                     }
                 }
             }
-            
-            recursion_stack.delete(node);
-            return { depth: max_child_depth + 1, tree: tree_obj, cycle: has_cycle };
+
+            recStack.delete(node);
+            return { depth: maxChildDepth + 1, tree: treeObj };
         }
-        
-        const { depth, tree, cycle } = dfs(root);
-        
-        if (cycle) {
+
+        const { depth, tree } = dfs(root);
+
+        if (cycleFound) {
+            // ✅ No depth, no has_cycle: false
             total_cycles++;
-            parsed_trees.push({ root, has_cycle: true, tree: {}, depth: null });
+            hierarchies.push({ root, tree: {}, has_cycle: true });
         } else {
+            // ✅ No has_cycle field at all
             total_trees++;
-            parsed_trees.push({ root, has_cycle: false, tree: { [root]: tree }, depth });
-            
-            if (depth > max_depth) {
+            hierarchies.push({ root, tree: { [root]: tree }, depth });
+
+            if (depth > max_depth || (depth === max_depth && (!largest_tree_root || root < largest_tree_root))) {
                 max_depth = depth;
                 largest_tree_root = root;
-            } else if (depth === max_depth) {
-                if (!largest_tree_root || root < largest_tree_root) {
-                    largest_tree_root = root;
-                }
             }
         }
     }
-    
+
     return {
-        user_id: "john_doe_01011990", 
+        user_id: "john_doe_01011990",
         email_id: "john@example.com",
         college_roll_number: "AB123456",
+        hierarchies,
         invalid_entries,
         duplicate_edges,
-        total_trees,
-        total_cycles,
-        largest_tree_root,
-        parsed_trees
+        summary: {
+            total_trees,
+            total_cycles,
+            largest_tree_root
+        }
     };
 }
 

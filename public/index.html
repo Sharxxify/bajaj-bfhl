@@ -324,9 +324,9 @@
                 
                 // Update UI
                 document.getElementById('user-info').innerText = `${data.user_id} | ${data.email_id} | ${data.college_roll_number}`;
-                document.getElementById('stat-trees').innerText = data.total_trees;
-                document.getElementById('stat-cycles').innerText = data.total_cycles;
-                document.getElementById('stat-largest').innerText = data.largest_tree_root || 'None';
+                document.getElementById('stat-trees').innerText = data.summary.total_trees;
+                document.getElementById('stat-cycles').innerText = data.summary.total_cycles;
+                document.getElementById('stat-largest').innerText = data.summary.largest_tree_root || 'None';
 
                 // Arrays
                 const invDiv = document.getElementById('invalid-entries');
@@ -343,8 +343,8 @@
                 const treeOutput = document.getElementById('trees-output');
                 treeOutput.innerHTML = '';
 
-                if (data.parsed_trees && data.parsed_trees.length > 0) {
-                    data.parsed_trees.forEach(pt => {
+                if (data.hierarchies && data.hierarchies.length > 0) {
+                    data.hierarchies.forEach(pt => {
                         const rootEl = document.createElement('div');
                         if (pt.has_cycle) {
                             rootEl.innerHTML = `<span class="node-label">${escapeHtml(pt.root)}</span> <span class="cycle-badge">Cycle Detected</span>`;
