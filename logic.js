@@ -36,110 +36,147 @@ function processData(data) {
         }
     }
 
-    // Step 2: Build adjacency list (diamond rule: first parent wins)
-    const adj = {};
-    const parentMap = {};
+    // Step 2: Build full adjacency and undirected graph to find WCCs (Weakly Connected Components)
     const nodes = new Set();
+    const fullAdj = {};
+    const inDegree = {};
+    const undirectedAdj = {};
 
     for (let edge of valid_edges) {
         const u = edge[0], v = edge[3];
         nodes.add(u);
         nodes.add(v);
-        if (parentMap[v] !== undefined) continue; // diamond: skip later parents
-        parentMap[v] = u;
-        if (!adj[u]) adj[u] = [];
-        adj[u].push(v);
+        
+        if (!fullAdj[u]) fullAdj[u] = [];
+        fullAdj[u].push(v);
+        
+        inDegree[v] = (inDegree[v] || 0) + 1;
+        if (inDegree[u] === undefined) inDegree[u] = 0;
+
+        if (!undirectedAdj[u]) undirectedAdj[u] = [];
+        if (!undirectedAdj[v]) undirectedAdj[v] = [];
+        undirectedAdj[u].push(v);
+        undirectedAdj[v].push(u);
     }
 
-    // Step 3: Find roots (nodes with no parent)
-    const roots = [];
-    for (let node of [...nodes].sort()) {
-        if (parentMap[node] === undefined) roots.push(node);
+    // Ensure isolated nodes have inDegree 0
+    for (let node of nodes) {
+        if (inDegree[node] === undefined) inDegree[node] = 0;
     }
 
-    // Step 4: Find pure-cycle groups (nodes unreachable from any root)
-    const visitedFromRoots = new Set();
-    const bfsQ = [...roots];
-    while (bfsQ.length > 0) {
-        const curr = bfsQ.shift();
-        if (visitedFromRoots.has(curr)) continue;
-        visitedFromRoots.add(curr);
-        if (adj[curr]) for (let child of adj[curr]) bfsQ.push(child);
-    }
+    // Find WCCs
+    const visitedNodes = new Set();
+    const components = [];
 
-    const unvisited = new Set([...nodes].filter(n => !visitedFromRoots.has(n)));
-
-    while (unvisited.size > 0) {
-        // Find the connected component and pick lex-smallest as root
-        const start = [...unvisited].sort()[0];
-        const component = new Set();
-        const compQ = [start];
-        while (compQ.length > 0) {
-            const node = compQ.shift();
-            if (component.has(node)) continue;
-            component.add(node);
-            unvisited.delete(node);
-            if (adj[node]) for (let c of adj[node]) if (!component.has(c)) compQ.push(c);
-            if (parentMap[node] !== undefined && !component.has(parentMap[node]))
-                compQ.push(parentMap[node]);
+    for (let node of nodes) {
+        if (!visitedNodes.has(node)) {
+            const comp = new Set();
+            const q = [node];
+            visitedNodes.add(node);
+            
+            while (q.length > 0) {
+                const curr = q.shift();
+                comp.add(curr);
+                if (undirectedAdj[curr]) {
+                    for (let neighbor of undirectedAdj[curr]) {
+                        if (!visitedNodes.has(neighbor)) {
+                            visitedNodes.add(neighbor);
+                            q.push(neighbor);
+                        }
+                    }
+                }
+            }
+            components.push(comp);
         }
-        roots.push([...component].sort()[0]);
     }
 
-    // Step 5: DFS per root — detect cycles, build tree, compute depth
-    const hierarchies = [];
     let total_trees = 0;
     let total_cycles = 0;
     let max_depth = 0;
     let largest_tree_root = null;
+    const hierarchies = [];
 
-    // Sort roots so processing order is deterministic
-    roots.sort();
-
-    for (let root of roots) {
+    // Step 3: Process each component independently
+    for (let comp of components) {
+        // Check for cycles in this component using DFS
+        let cycleFound = false;
         const visited = new Set();
         const recStack = new Set();
-        let cycleFound = false; // ✅ fresh per root
 
-        function dfs(node) {
+        function checkCycle(node) {
             visited.add(node);
             recStack.add(node);
-            let maxChildDepth = 0;
-            const treeObj = {};
-
-            if (adj[node]) {
-                for (let child of adj[node]) {
+            if (fullAdj[node]) {
+                for (let child of fullAdj[node]) {
                     if (recStack.has(child)) {
-                        cycleFound = true; // back-edge = cycle
+                        cycleFound = true;
                     } else if (!visited.has(child)) {
-                        const { depth: cd, tree: ct } = dfs(child);
-                        maxChildDepth = Math.max(maxChildDepth, cd);
-                        treeObj[child] = ct;
+                        checkCycle(child);
                     }
                 }
             }
-
             recStack.delete(node);
-            return { depth: maxChildDepth + 1, tree: treeObj };
         }
 
-        const { depth, tree } = dfs(root);
+        for (let node of comp) {
+            if (!visited.has(node)) {
+                checkCycle(node);
+            }
+        }
 
         if (cycleFound) {
-            // ✅ No depth, no has_cycle: false
+            // It's a cycle group
             total_cycles++;
+            const compRoots = [...comp].filter(n => inDegree[n] === 0).sort();
+            const root = compRoots.length > 0 ? compRoots[0] : [...comp].sort()[0];
+            
             hierarchies.push({ root, tree: {}, has_cycle: true });
         } else {
-            // ✅ No has_cycle field at all
-            total_trees++;
-            hierarchies.push({ root, tree: { [root]: tree }, depth });
+            // It's a DAG. Apply diamond rule to edges within this component
+            const parentMap = {};
+            const treeAdj = {};
+            const compEdges = valid_edges.filter(e => comp.has(e[0]) && comp.has(e[3]));
 
-            if (depth > max_depth || (depth === max_depth && (!largest_tree_root || root < largest_tree_root))) {
-                max_depth = depth;
-                largest_tree_root = root;
+            for (let edge of compEdges) {
+                const u = edge[0], v = edge[3];
+                if (parentMap[v] !== undefined) continue; // Diamond rule
+                parentMap[v] = u;
+                if (!treeAdj[u]) treeAdj[u] = [];
+                treeAdj[u].push(v);
+            }
+
+            // Find roots after diamond rule
+            const treeRoots = [...comp].filter(n => parentMap[n] === undefined).sort();
+
+            for (let root of treeRoots) {
+                total_trees++;
+                
+                function buildTree(node) {
+                    let maxChildDepth = 0;
+                    const treeObj = {};
+                    if (treeAdj[node]) {
+                        for (let child of treeAdj[node]) {
+                            const { depth: cd, tree: ct } = buildTree(child);
+                            maxChildDepth = Math.max(maxChildDepth, cd);
+                            treeObj[child] = ct;
+                        }
+                    }
+                    return { depth: maxChildDepth + 1, tree: treeObj };
+                }
+
+                const { depth, tree } = buildTree(root);
+                hierarchies.push({ root, tree: { [root]: tree }, depth });
+
+                if (depth > max_depth || (depth === max_depth && (!largest_tree_root || root < largest_tree_root))) {
+                    max_depth = depth;
+                    largest_tree_root = root;
+                }
             }
         }
     }
+
+    // Sort hierarchies to ensure deterministic root order
+    hierarchies.sort((a, b) => a.root.localeCompare(b.root));
 
     return {
         user_id: "john_doe_01011990",
