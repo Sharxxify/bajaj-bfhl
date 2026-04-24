@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRM BFHL Graph Visualizer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-grad-1: #0f172a;
+            --bg-grad-2: #1e1b4b;
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-grad-1), var(--bg-grad-2));
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        header {
+            text-align: center;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        h1 {
+            font-size: 3rem;
+            background: linear-gradient(to right, #a855f7, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 2rem;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            animation: fadeIn 1s ease-out;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 1rem;
+            color: var(--text-main);
+            font-size: 1rem;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--primary);
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #error-msg {
+            color: var(--danger);
+            margin-top: 1rem;
+            text-align: center;
+            font-weight: 600;
+            display: none;
+        }
+
+        .results-container {
+            display: none;
+            gap: 2rem;
+            animation: slideUp 0.6s ease-out forwards;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            border: 1px solid var(--glass-border);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+            background: linear-gradient(to right, #34d399, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .tree-view {
+            margin-top: 2rem;
+        }
+
+        .tree-node {
+            margin-left: 20px;
+            position: relative;
+            padding-left: 15px;
+            border-left: 2px solid var(--glass-border);
+            margin-top: 5px;
+        }
+
+        .tree-node::before {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 0;
+            width: 10px;
+            height: 2px;
+            background: var(--glass-border);
+        }
+
+        .node-label {
+            display: inline-block;
+            background: rgba(139, 92, 246, 0.2);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .cycle-badge {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-left: 8px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .meta-data {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .arrays-box {
+            margin-top: 1.5rem;
+        }
+
+        .pill {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin: 4px;
+        }
+
+        .pill.invalid { background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .pill.duplicate { background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Graph Visualizer</h1>
+            <p class="subtitle">SRM BFHL Challenge • Directed Graph Analysis</p>
+        </header>
+
+        <div class="card">
+            <textarea id="data-input" placeholder='Enter edges separated by commas or newlines.&#10;Example: A->B, A->C, B->D, hello, X->Y, Y->Z, Z->X'></textarea>
+            <button id="submit-btn">Analyze Graph</button>
+            <div id="error-msg"></div>
+        </div>
+
+        <div class="results-container" id="results-container">
+            <div class="card">
+                <div class="meta-data" id="user-info"></div>
+                <div class="grid">
+                    <div class="stat-box">
+                        <div>Total Trees</div>
+                        <div class="stat-value" id="stat-trees">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div>Total Cycles</div>
+                        <div class="stat-value" id="stat-cycles" style="background: linear-gradient(to right, #f87171, #fb923c); -webkit-background-clip: text;">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div>Largest Tree Root</div>
+                        <div class="stat-value" id="stat-largest">-</div>
+                    </div>
+                </div>
+
+                <div class="arrays-box">
+                    <h3>Invalid Entries</h3>
+                    <div id="invalid-entries" style="margin-top:0.5rem; margin-bottom:1rem;"></div>
+                    <h3>Duplicate Edges</h3>
+                    <div id="duplicate-edges" style="margin-top:0.5rem;"></div>
+                </div>
+
+                <div class="tree-view" id="tree-container">
+                    <h3>Graph Structures</h3>
+                    <div id="trees-output" style="margin-top: 1rem;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const escapeHtml = (unsafe) => {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        };
+
+        document.getElementById('submit-btn').addEventListener('click', async () => {
+            const inputVal = document.getElementById('data-input').value;
+            const errorMsg = document.getElementById('error-msg');
+            const resultsContainer = document.getElementById('results-container');
+            const btn = document.getElementById('submit-btn');
+
+            errorMsg.style.display = 'none';
+            resultsContainer.style.display = 'none';
+            
+            if (!inputVal.trim()) {
+                errorMsg.innerText = "Please enter some data.";
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            // Parse input: split by comma or newline and filter empty
+            // Wait, we also need to support the array structure like ["A->B", "hello"] natively if the user pastes JSON.
+            // But since it's a textarea, comma separation is fine. 
+            // Also strip quotes if they pasted exactly: "A->B","C->D"
+            const dataArray = inputVal.split(/[\n,]+/)
+                .map(s => s.trim().replace(/^"|"$/g, ''))
+                .filter(s => s.length > 0);
+
+            btn.innerText = "Processing...";
+            btn.style.opacity = "0.7";
+
+            try {
+                const response = await fetch('/bfhl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: dataArray })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Update UI
+                document.getElementById('user-info').innerText = `${data.user_id} | ${data.email_id} | ${data.college_roll_number}`;
+                document.getElementById('stat-trees').innerText = data.total_trees;
+                document.getElementById('stat-cycles').innerText = data.total_cycles;
+                document.getElementById('stat-largest').innerText = data.largest_tree_root || 'None';
+
+                // Arrays
+                const invDiv = document.getElementById('invalid-entries');
+                invDiv.innerHTML = data.invalid_entries.length > 0 
+                    ? data.invalid_entries.map(e => `<span class="pill invalid">${escapeHtml(e)}</span>`).join('')
+                    : '<span style="color:var(--text-muted)">None</span>';
+
+                const dupDiv = document.getElementById('duplicate-edges');
+                dupDiv.innerHTML = data.duplicate_edges.length > 0 
+                    ? data.duplicate_edges.map(e => `<span class="pill duplicate">${escapeHtml(e)}</span>`).join('')
+                    : '<span style="color:var(--text-muted)">None</span>';
+
+                // Trees
+                const treeOutput = document.getElementById('trees-output');
+                treeOutput.innerHTML = '';
+
+                if (data.parsed_trees && data.parsed_trees.length > 0) {
+                    data.parsed_trees.forEach(pt => {
+                        const rootEl = document.createElement('div');
+                        if (pt.has_cycle) {
+                            rootEl.innerHTML = `<span class="node-label">${escapeHtml(pt.root)}</span> <span class="cycle-badge">Cycle Detected</span>`;
+                        } else {
+                            rootEl.innerHTML = renderTree(pt.tree);
+                        }
+                        treeOutput.appendChild(rootEl);
+                    });
+                } else {
+                    treeOutput.innerHTML = '<span style="color:var(--text-muted)">No valid graphs found.</span>';
+                }
+
+                resultsContainer.style.display = 'block';
+
+            } catch (err) {
+                errorMsg.innerText = "Error: " + err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                btn.innerText = "Analyze Graph";
+                btn.style.opacity = "1";
+            }
+        });
+
+        function renderTree(obj) {
+            let html = '';
+            for (let key in obj) {
+                html += `<div class="tree-node">
+                            <span class="node-label">${escapeHtml(key)}</span>
+                            ${Object.keys(obj[key]).length > 0 ? renderTree(obj[key]) : ''}
+                         </div>`;
+            }
+            return html;
+        }
+    </script>
+</body>
+</html>
