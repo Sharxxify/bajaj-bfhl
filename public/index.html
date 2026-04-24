@@ -298,21 +298,11 @@
                 return;
             }
 
-            // Parse input: split by comma or newline
-            // Per PDF, empty strings "" are valid inputs that should be sent and land in invalid_entries
-            // Only truly absent items (nothing between two consecutive delimiters after trim) are skipped,
-            // but a user who explicitly typed "" (as in, put quotes around nothing) should be sent.
-            // Practical approach: split by comma/newline, strip surrounding quotes only, keep empty-string items.
-            const raw = inputVal.split(/[\n,]+/);
-            const dataArray = raw
-                .map(s => s.replace(/^"|"$/g, '')) // strip surrounding quotes if any
-                .filter((s, i, arr) => {
-                    // Keep if not completely absent — i.e., allow " ", "A->B", "" (explicit empty quote)
-                    // Only drop if it was literally nothing between two consecutive delimiters
-                    return s !== undefined;
-                });
-            // Remove trailing empty from split artifact (split always has one entry even on empty input)
-            const filteredArray = dataArray.filter(s => s.length > 0 || inputVal.includes('""'));
+            // Parse input: split by comma or newline, trim each token (comma+space is a UI artifact)
+            // The backend is what enforces the no-whitespace rule on the raw API data array
+            const filteredArray = inputVal.split(/[\n,]+/)
+                .map(s => s.trim().replace(/^"|"$/g, '')) // trim UI whitespace, strip quotes
+                .filter(s => s.length > 0); // drop completely empty slots
 
             btn.innerText = "Processing...";
             btn.style.opacity = "0.7";
