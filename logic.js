@@ -187,9 +187,9 @@ function processData(data) {
     return {
         // TODO: Replace with your actual credentials
         // user_id format: fullname_ddmmyyyy (e.g. "johndoe_17091999")
-        user_id: "sreehari_ddmmyyyy",
-        email_id: "youremail@srm.edu.in",
-        college_roll_number: "YOURROLLNUMBER",
+        user_id: "sreehaas_penugonda_ddmmyyyy",
+        email_id: "sp0468@srmist.edu.in",
+        college_roll_number: "RA2311032010028",
         hierarchies,
         invalid_entries,
         duplicate_edges,
