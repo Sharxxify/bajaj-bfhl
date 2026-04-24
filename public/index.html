@@ -298,13 +298,21 @@
                 return;
             }
 
-            // Parse input: split by comma or newline and filter empty
-            // Wait, we also need to support the array structure like ["A->B", "hello"] natively if the user pastes JSON.
-            // But since it's a textarea, comma separation is fine. 
-            // Also strip quotes if they pasted exactly: "A->B","C->D"
-            const dataArray = inputVal.split(/[\n,]+/)
-                .map(s => s.trim().replace(/^"|"$/g, ''))
-                .filter(s => s.length > 0);
+            // Parse input: split by comma or newline
+            // Per PDF, empty strings "" are valid inputs that should be sent and land in invalid_entries
+            // Only truly absent items (nothing between two consecutive delimiters after trim) are skipped,
+            // but a user who explicitly typed "" (as in, put quotes around nothing) should be sent.
+            // Practical approach: split by comma/newline, strip surrounding quotes only, keep empty-string items.
+            const raw = inputVal.split(/[\n,]+/);
+            const dataArray = raw
+                .map(s => s.replace(/^"|"$/g, '')) // strip surrounding quotes if any
+                .filter((s, i, arr) => {
+                    // Keep if not completely absent — i.e., allow " ", "A->B", "" (explicit empty quote)
+                    // Only drop if it was literally nothing between two consecutive delimiters
+                    return s !== undefined;
+                });
+            // Remove trailing empty from split artifact (split always has one entry even on empty input)
+            const filteredArray = dataArray.filter(s => s.length > 0 || inputVal.includes('""'));
 
             btn.innerText = "Processing...";
             btn.style.opacity = "0.7";
@@ -313,7 +321,7 @@
                 const response = await fetch('/bfhl', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: dataArray })
+                    body: JSON.stringify({ data: filteredArray })
                 });
 
                 if (!response.ok) {

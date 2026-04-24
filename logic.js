@@ -10,29 +10,35 @@ function processData(data) {
     }
 
     // Step 1: Validate & detect duplicates
+    // Per PDF: whitespace-padded strings like " A->B " are INVALID — do NOT trim before validation
     for (let item of data) {
         if (typeof item !== 'string') {
             invalid_entries.push(String(item));
             continue;
         }
-        const trimmed = item.trim();
-        if (!/^[A-Z]->[A-Z]$/.test(trimmed)) {
-            invalid_entries.push(trimmed || item);
+        // Empty or whitespace-only strings are invalid
+        if (item.trim() === '') {
+            invalid_entries.push(item);
             continue;
         }
-        const u = trimmed[0], v = trimmed[3];
+        // No trimming — " A->B " must be rejected
+        if (!/^[A-Z]->[A-Z]$/.test(item)) {
+            invalid_entries.push(item);
+            continue;
+        }
+        const u = item[0], v = item[3];
         if (u === v) {
-            invalid_entries.push(trimmed);
+            invalid_entries.push(item);
             continue;
         }
-        if (seen_edges.has(trimmed)) {
-            if (!duplicate_added.has(trimmed)) {
-                duplicate_edges.push(trimmed);
-                duplicate_added.add(trimmed);
+        if (seen_edges.has(item)) {
+            if (!duplicate_added.has(item)) {
+                duplicate_edges.push(item);
+                duplicate_added.add(item);
             }
         } else {
-            seen_edges.add(trimmed);
-            valid_edges.push(trimmed);
+            seen_edges.add(item);
+            valid_edges.push(item);
         }
     }
 
@@ -179,9 +185,11 @@ function processData(data) {
     hierarchies.sort((a, b) => a.root.localeCompare(b.root));
 
     return {
-        user_id: "john_doe_01011990",
-        email_id: "john@example.com",
-        college_roll_number: "AB123456",
+        // TODO: Replace with your actual credentials
+        // user_id format: fullname_ddmmyyyy (e.g. "johndoe_17091999")
+        user_id: "sreehari_ddmmyyyy",
+        email_id: "youremail@srm.edu.in",
+        college_roll_number: "YOURROLLNUMBER",
         hierarchies,
         invalid_entries,
         duplicate_edges,
